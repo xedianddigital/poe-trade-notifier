@@ -87,7 +87,6 @@ class LiveEngine {
   readonly events = new EventEmitter()
   private connections = new Map<string, Connection>()
   private listings = new Map<string, CachedListing>()
-  private lastAutoTravelAt = new Map<string, number>()
 
   private sweepTimer: NodeJS.Timeout | null = null
 
@@ -400,7 +399,6 @@ class LiveEngine {
     const cooldown = clampCooldown(settings.autoTravelCooldownMs)
     conn.pausedUntil = Date.now() + cooldown
     conn.pending.length = 0
-    this.lastAutoTravelAt.set(conn.search.id, Date.now())
     this.emit({ type: "cooldown", searchInternalId: conn.search.id, until: conn.pausedUntil })
     this.log("info", `Auto-travel armed cooldown: pausing ${conn.search.title} for ${Math.round(cooldown / 1000)}s.`)
 
