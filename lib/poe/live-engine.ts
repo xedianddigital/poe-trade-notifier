@@ -418,11 +418,18 @@ class LiveEngine {
   }
 
   private async onListing(conn: Connection, listing: Listing, session: Session): Promise<void> {
-    const { bufferSize } = await getSettings()
-    this.cache(listing, conn.search, bufferSize)
+    const settings = await getSettings()
+
+    // Instant-buyout only: drop listings without a Travel-to-Hideout token
+    // (mixed / negotiable-price whispers), if the user asked for it.
+    if (settings.instantBuyoutOnly && !listing.instantBuyout) {
+      this.log("info", `Skipped (not instant buyout): ${listing.itemName || listing.itemType}`)
+      return
+    }
+
+    this.cache(listing, conn.search, settings.bufferSize)
     this.emit({ type: "listing", listing })
 
-    const settings = await getSettings()
     if (!settings.autoTravelEnabled || !conn.search.autoTravel) return
     if (!listing.whisperToken) return
     if (Date.now() < conn.pausedUntil) return

@@ -177,6 +177,19 @@ export function Dashboard() {
             </label>
 
             <label className="flex items-center justify-between gap-3 py-1 text-xs">
+              <span>
+                Instant buyout only
+                <span className="ml-1.5 text-muted-foreground">(skip negotiable)</span>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.instantBuyoutOnly}
+                onChange={(e) => patchSettings({ instantBuyoutOnly: e.target.checked })}
+                className="accent-amber-500"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 py-1 text-xs">
               <span>Sound on new listing</span>
               <input
                 type="checkbox"

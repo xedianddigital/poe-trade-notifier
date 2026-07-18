@@ -21,6 +21,7 @@ interface SettingsPatch {
   soundEnabled?: boolean
   bufferSize?: number
   listingTtlMs?: number
+  instantBuyoutOnly?: boolean
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -37,6 +38,7 @@ export async function PATCH(req: Request): Promise<Response> {
   const patch: SettingsPatch = {}
   if (typeof body.autoTravelEnabled === "boolean") patch.autoTravelEnabled = body.autoTravelEnabled
   if (typeof body.soundEnabled === "boolean") patch.soundEnabled = body.soundEnabled
+  if (typeof body.instantBuyoutOnly === "boolean") patch.instantBuyoutOnly = body.instantBuyoutOnly
 
   // Clamp rather than reject: these are bounded to keep request rates sane, and
   // a slider out of range shouldn't fail the whole save.

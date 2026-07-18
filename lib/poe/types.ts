@@ -47,6 +47,11 @@ export interface Settings {
   bufferSize: number
   /** How long a listing stays in the manual feed before expiring. */
   listingTtlMs: number
+  /**
+   * Keep only instant-buyout listings - those whose whisper token is a
+   * Travel-to-Hideout token. Drops mixed and negotiable-price listings.
+   */
+  instantBuyoutOnly: boolean
 }
 
 export type WhisperState = "idle" | "sending" | "sent" | "error" | "expired"
@@ -66,6 +71,8 @@ export interface Listing {
   listedAgo: string | null
   mods: string[]
   corrupted: boolean
+  /** True when the whisper token is a Travel-to-Hideout (instant buyout) token. */
+  instantBuyout: boolean
   /** Token used for POST /api/trade/whisper (Travel to Hideout). */
   whisperToken: string | null
   /** Unix ms when the whisper token expires (parsed from the JWT). */
@@ -88,6 +95,9 @@ export const DEFAULT_SETTINGS: Settings = {
   soundEnabled: true,
   bufferSize: 10,
   listingTtlMs: 180_000,
+  // Defaults off until token-type detection is confirmed against live data, so
+  // it can't silently hide every listing during first-run testing.
+  instantBuyoutOnly: false,
 }
 
 /** Cooldown bounds offered in the UI. */

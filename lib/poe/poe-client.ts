@@ -5,7 +5,7 @@
 // "Travel to Hideout" button sends.
 
 import type { Listing, Session } from "./types"
-import { tokenExpiryMs } from "./jwt"
+import { decodeWhisperToken, tokenExpiryMs } from "./jwt"
 import { rateLimiter } from "./rate-limit"
 
 const BASE = "https://www.pathofexile.com"
@@ -152,6 +152,9 @@ function normalize(raw: RawResult, searchInternalId: string, searchTitle: string
   const listing = raw.listing ?? {}
   const item = raw.item ?? {}
   const token = listing.whisper_token ?? listing.hideout_token ?? null
+  // Instant buyout is identified by the token type: the Travel-to-Hideout token
+  // carries tok:"hideout" (confirmed from the trade site's own whisper request).
+  const instantBuyout = decodeWhisperToken(token)?.tok === "hideout"
   const mods = [
     ...(item.enchantMods ?? []),
     ...(item.implicitMods ?? []),
@@ -171,6 +174,7 @@ function normalize(raw: RawResult, searchInternalId: string, searchTitle: string
     listedAgo: relativeTime(listing.indexed),
     mods,
     corrupted: Boolean(item.corrupted),
+    instantBuyout,
     whisperToken: token,
     tokenExpMs: tokenExpiryMs(token),
     receivedAt: Date.now(),
