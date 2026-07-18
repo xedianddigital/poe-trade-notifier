@@ -196,6 +196,15 @@ class LiveEngine {
     conn.ws = null
     this.connections.delete(id)
     this.emit({ type: "status", searchInternalId: id, status: "disconnected" })
+
+    // Clear the on-screen listing if it came from this search - changing or
+    // removing a search shouldn't leave a stale card from it behind.
+    for (const [listingId, cached] of this.listings) {
+      if (cached.search.id === id) {
+        this.listings.delete(listingId)
+        this.emit({ type: "expire", listingId })
+      }
+    }
   }
 
   stopAll(): void {
@@ -435,9 +444,9 @@ class LiveEngine {
   private async onListing(conn: Connection, listing: Listing, session: Session): Promise<void> {
     const settings = await getSettings()
 
-    // Instant-buyout only: drop listings without a Travel-to-Hideout token
-    // (mixed / negotiable-price whispers), if the user asked for it.
-    if (settings.instantBuyoutOnly && !listing.instantBuyout) {
+    // Instant buyout only, always: drop anything without a Travel-to-Hideout
+    // token (mixed / negotiable-price whispers). The app only buys instant.
+    if (!listing.instantBuyout) {
       this.log("info", `Skipped (not instant buyout): ${listing.itemName || listing.itemType}`)
       return
     }

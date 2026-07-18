@@ -254,8 +254,8 @@ async function runUninstall() {
     buttons: ['Uninstall', 'Cancel'],
     defaultId: 1,
     cancelId: 1,
-    title: 'Uninstall PoE Trade Notifier',
-    message: 'Uninstall PoE Trade Notifier?',
+    title: 'Uninstall SpeedyCadiro',
+    message: 'Uninstall SpeedyCadiro?',
     detail:
       'The app will close and the uninstaller will open. Your saved session and settings are kept, so reinstalling restores them.',
   })
@@ -267,12 +267,12 @@ async function runUninstall() {
       title: 'Uninstall',
       message: 'Nothing to uninstall',
       detail:
-        'This build is a portable AppImage - delete the .AppImage file to remove it. Settings live in ~/.config/poe-trade-notifier.',
+        'This build is a portable AppImage - delete the .AppImage file to remove it. Settings live in ~/.config/speedy-cadiro.',
     })
     return { ok: false, unsupported: true }
   }
 
-  const uninstaller = path.join(path.dirname(process.execPath), 'Uninstall PoE Trade Notifier.exe')
+  const uninstaller = path.join(path.dirname(process.execPath), 'Uninstall SpeedyCadiro.exe')
   try {
     spawn(uninstaller, [], { detached: true, stdio: 'ignore' }).unref()
   } catch (err) {
@@ -289,7 +289,15 @@ function buildMenu() {
   const template = [
     {
       label: 'File',
-      submenu: [{ role: 'quit' }],
+      submenu: [
+        {
+          label: 'Options…',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow?.webContents.send('poe:open-options'),
+        },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
     },
     {
       label: 'View',
@@ -324,7 +332,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0a0a0a',
     show: false,
-    title: 'PoE Trade Notifier',
+    title: 'SpeedyCadiro',
     webPreferences: {
       // The renderer only talks to the local server over HTTP; it needs no
       // Node access of its own beyond the login bridge.
@@ -366,16 +374,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  ipcMain.handle('poe:version', () => {
-    // Show version plus the build's commit so any two builds are distinguishable.
-    let commit = ''
-    try {
-      commit = require('./build-info.json').commit
-    } catch {
-      // No build-info in dev; just show the version.
-    }
-    return commit ? `${app.getVersion()} (${commit})` : app.getVersion()
-  })
+  ipcMain.handle('poe:version', () => app.getVersion())
   ipcMain.handle('poe:uninstall', () => runUninstall())
 
   ipcMain.handle('poe:login', async () => {

@@ -5,6 +5,7 @@ import { SessionPanel } from "@/components/session-panel"
 import { SearchPanel } from "@/components/search-panel"
 import { CurrentListing } from "@/components/current-listing"
 import { CooldownBar } from "@/components/cooldown-bar"
+import { OptionsModal } from "@/components/options-modal"
 import { useLiveFeed } from "@/components/use-live-feed"
 import {
   AUTO_TRAVEL_COOLDOWN_MAX_MS,
@@ -18,12 +19,15 @@ export function Dashboard() {
   /** null while we're still asking the server. */
   const [sessionReady, setSessionReady] = useState<boolean | null>(null)
   const [version, setVersion] = useState<string | null>(null)
+  const [optionsOpen, setOptionsOpen] = useState(false)
 
   useEffect(() => {
     void window.poeDesktop?.version().then(setVersion)
+    // Open Options from the native File -> Options menu.
+    return window.poeDesktop?.onOpenOptions(() => setOptionsOpen(true))
   }, [])
 
-  const feed = useLiveFeed(settings.soundEnabled)
+  const feed = useLiveFeed(settings.soundEnabled, settings.soundName)
   const current = feed.listings[0] ?? null
 
   useEffect(() => {
@@ -59,7 +63,7 @@ export function Dashboard() {
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold">
-            PoE Trade Notifier
+            SpeedyCadiro
             {version && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">v{version}</span>
             )}
@@ -98,17 +102,13 @@ export function Dashboard() {
         <div className="space-y-4">
           <SessionPanel onSessionChange={setSessionReady} />
 
-          <SearchPanel statuses={feed.statuses} statusErrors={feed.statusErrors} />
-
           <section className="rounded-lg border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">Settings</h2>
 
             <div className="py-1.5">
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span>Travel interval</span>
-                <span className="font-medium tabular-nums text-muted-foreground">
-                  {intervalSec}s
-                </span>
+                <span className="font-medium tabular-nums text-muted-foreground">{intervalSec}s</span>
               </div>
               <input
                 type="range"
@@ -123,27 +123,9 @@ export function Dashboard() {
                 After a travel, all searches pause this long so you can finish buying.
               </p>
             </div>
-
-            <label className="flex items-center justify-between gap-3 py-1.5 text-xs">
-              <span>Instant buyout only</span>
-              <input
-                type="checkbox"
-                checked={settings.instantBuyoutOnly}
-                onChange={(e) => patchSettings({ instantBuyoutOnly: e.target.checked })}
-                className="size-4 accent-emerald-500"
-              />
-            </label>
-
-            <label className="flex items-center justify-between gap-3 py-1.5 text-xs">
-              <span>Sound on match</span>
-              <input
-                type="checkbox"
-                checked={settings.soundEnabled}
-                onChange={(e) => patchSettings({ soundEnabled: e.target.checked })}
-                className="size-4 accent-emerald-500"
-              />
-            </label>
           </section>
+
+          <SearchPanel statuses={feed.statuses} statusErrors={feed.statusErrors} />
 
           {feed.logs.length > 0 && (
             <section className="rounded-lg border border-border bg-card p-4">
@@ -173,6 +155,13 @@ export function Dashboard() {
           <CurrentListing listing={current} onWhisperState={feed.setWhisperState} />
         </div>
       </div>
+
+      <OptionsModal
+        open={optionsOpen}
+        settings={settings}
+        onPatch={patchSettings}
+        onClose={() => setOptionsOpen(false)}
+      />
     </main>
   )
 }

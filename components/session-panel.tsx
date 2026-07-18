@@ -13,6 +13,7 @@ declare global {
       isDesktop: boolean
       version: () => Promise<string>
       uninstall: () => Promise<{ ok: boolean }>
+      onOpenOptions: (cb: () => void) => () => void
       login: () => Promise<{ ok: boolean; valid: boolean; reason?: string; found?: string[] }>
     }
   }
@@ -36,8 +37,6 @@ export function SessionPanel({
   const [info, setInfo] = useState<SessionInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ kind: "ok" | "warn" | "error"; text: string } | null>(null)
-  const [manualOpen, setManualOpen] = useState(false)
-  const [form, setForm] = useState({ poesessid: "", poetoken: "", cfClearance: "", userAgent: "" })
   // Set after mount: the bridge only exists in the desktop shell, and reading it
   // during render would mismatch the server-rendered markup.
   const [isDesktop, setIsDesktop] = useState(false)
@@ -59,38 +58,6 @@ export function SessionPanel({
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const saveManual = async () => {
-    setBusy(true)
-    setNotice({ kind: "warn", text: "Checking those cookies with pathofexile.com…" })
-    try {
-      const res = await fetch("/api/session", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // Deliberately not navigator.userAgent: inside the desktop shell that
-        // reports Electron, which cf_clearance will never match.
-        body: JSON.stringify(form),
-      })
-      const data = await res.json()
-      if (!res.ok || !data.ok) {
-        setNotice({ kind: "error", text: data.error ?? "Could not save." })
-      } else if (!data.valid) {
-        setNotice({
-          kind: "error",
-          text: `Saved, but pathofexile.com rejected them: ${data.reason ?? "unknown reason"}.`,
-        })
-      } else {
-        setNotice({ kind: "ok", text: "Connected. Session saved and validated." })
-        setForm({ poesessid: "", poetoken: "", cfClearance: "", userAgent: "" })
-        setManualOpen(false)
-      }
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: "error", text: `Could not save: ${(err as Error).message}` })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const signIn = async () => {
     setBusy(true)
@@ -153,61 +120,10 @@ export function SessionPanel({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setManualOpen((v) => !v)}
-          className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {manualOpen ? "Hide advanced" : "Enter cookies manually"}
-        </button>
-        {info?.configured && (
-          <Button size="sm" variant="ghost" onClick={clear} disabled={busy} className="ml-auto">
+      {info?.configured && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="ghost" onClick={clear} disabled={busy}>
             Sign out
-          </Button>
-        )}
-      </div>
-
-      {manualOpen && (
-        <div className="mt-3 space-y-2">
-          <ol className="list-decimal space-y-0.5 pl-4 text-[11px] text-muted-foreground">
-            <li>Open pathofexile.com in your browser and make sure you&apos;re logged in.</li>
-            <li>
-              Press <kbd className="rounded border border-border px-1">F12</kbd> → the{" "}
-              <strong>Application</strong> tab (Chrome/Edge) or <strong>Storage</strong> tab
-              (Firefox).
-            </li>
-            <li>
-              Expand <strong>Cookies</strong> → <code>https://www.pathofexile.com</code>.
-            </li>
-            <li>Copy each value below. Only POESESSID is required.</li>
-          </ol>
-          <p className="text-[11px] text-muted-foreground">
-            The User-Agent <strong>must match the browser the cookies came from</strong> — Cloudflare
-            ties <code>cf_clearance</code> to it. Copy it from that browser&apos;s console:{" "}
-            <code>navigator.userAgent</code>.
-          </p>
-          {(
-            [
-              ["poesessid", "POESESSID (required)"],
-              ["cfClearance", "cf_clearance"],
-              ["poetoken", "POETOKEN (optional)"],
-              ["userAgent", "User-Agent — must match the browser above"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="mb-1 block text-xs text-muted-foreground">{label}</span>
-              <input
-                type="text"
-                spellCheck={false}
-                autoComplete="off"
-                value={form[key]}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                className="w-full rounded-md border border-input bg-background px-2 py-1.5 font-mono text-xs outline-none focus:ring-2 focus:ring-ring"
-              />
-            </label>
-          ))}
-          <Button size="sm" onClick={saveManual} disabled={busy || !form.poesessid.trim()}>
-            Save session
           </Button>
         </div>
       )}

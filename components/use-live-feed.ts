@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Listing, SearchStatus, ServerEvent, WhisperState } from "@/lib/poe/types"
+import { playSound } from "@/components/sounds"
 
 // The server owns the buffer: it evicts on size and expires on TTL, and tells
 // us via `expire`. The client just mirrors that.
@@ -32,7 +33,7 @@ export interface LiveFeed {
   setWhisperState: (listingId: string, state: WhisperState) => void
 }
 
-export function useLiveFeed(soundEnabled: boolean): LiveFeed {
+export function useLiveFeed(soundEnabled: boolean, soundName: string): LiveFeed {
   const [listings, setListings] = useState<Listing[]>([])
   const [statuses, setStatuses] = useState<Record<string, SearchStatus>>({})
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
@@ -43,9 +44,9 @@ export function useLiveFeed(soundEnabled: boolean): LiveFeed {
   const [sessionMessage, setSessionMessage] = useState<string | null>(null)
 
   const logId = useRef(0)
-  // Read inside the handler without resubscribing when the toggle changes.
-  const soundRef = useRef(soundEnabled)
-  soundRef.current = soundEnabled
+  // Read inside the handler without resubscribing when settings change.
+  const soundRef = useRef({ enabled: soundEnabled, name: soundName })
+  soundRef.current = { enabled: soundEnabled, name: soundName }
 
   const setWhisperState = useCallback((listingId: string, state: WhisperState) => {
     setListings((prev) =>
@@ -79,7 +80,7 @@ export function useLiveFeed(soundEnabled: boolean): LiveFeed {
             if (prev.some((l) => l.id === event.listing.id)) return prev
             return [event.listing, ...prev]
           })
-          if (soundRef.current) beep()
+          if (soundRef.current.enabled) playSound(soundRef.current.name)
           break
 
         case "expire":
@@ -140,29 +141,5 @@ export function useLiveFeed(soundEnabled: boolean): LiveFeed {
     sessionValid,
     sessionMessage,
     setWhisperState,
-  }
-}
-
-/** Short notification tone. WebAudio avoids shipping an audio asset. */
-function beep(): void {
-  try {
-    const Ctx =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctx) return
-    const ctx = new Ctx()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = "sine"
-    osc.frequency.value = 880
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25)
-    osc.connect(gain).connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.26)
-    osc.onended = () => void ctx.close()
-  } catch {
-    // Autoplay policy blocked it, or no audio device. Not worth surfacing.
   }
 }

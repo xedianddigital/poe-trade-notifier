@@ -40,14 +40,14 @@ export interface Settings {
    * long the current listing stays on screen. Clamped to TRAVEL_INTERVAL_MIN/MAX.
    */
   autoTravelCooldownMs: number
-  /**
-   * Keep only instant-buyout listings - those whose whisper token is a
-   * Travel-to-Hideout token. Drops mixed and negotiable-price listings.
-   */
-  instantBuyoutOnly: boolean
   /** Play a sound when a new listing arrives. */
   soundEnabled: boolean
+  /** Which notification sound to play. One of SOUND_NAMES. */
+  soundName: string
 }
+
+/** Selectable notification sounds (synthesised in the browser, no assets). */
+export const SOUND_NAMES = ["chime", "ping", "coin", "alert"] as const
 
 export type WhisperState = "idle" | "sending" | "sent" | "error" | "expired"
 
@@ -86,8 +86,8 @@ export interface AppConfig {
 
 export const DEFAULT_SETTINGS: Settings = {
   autoTravelCooldownMs: 30_000,
-  instantBuyoutOnly: true,
   soundEnabled: true,
+  soundName: "chime",
 }
 
 /** Travel interval bounds offered in the UI. */

@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('poeDesktop', {
   /** Run the platform uninstaller, after confirming with the user. */
   uninstall: () => ipcRenderer.invoke('poe:uninstall'),
 
+  /** Subscribe to File -> Options being chosen from the native menu. */
+  onOpenOptions: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on('poe:open-options', handler)
+    return () => ipcRenderer.removeListener('poe:open-options', handler)
+  },
+
   /**
    * Open a real browser window on pathofexile.com, wait for the user to log in,
    * then hand the resulting cookies to the local server.

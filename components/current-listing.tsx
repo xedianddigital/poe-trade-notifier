@@ -4,7 +4,7 @@
 // the current travel target clearly - what, how much, from whom - with a manual
 // re-travel button. Auto-travel handles the teleport; you handle the purchase.
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import type { Listing, WhisperState } from "@/lib/poe/types"
 
@@ -64,41 +64,24 @@ function Card({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-start justify-between gap-4 border-b border-border bg-muted/40 p-4">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold">{name}</h3>
-          {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="text-lg font-semibold tabular-nums">
-            {listing.priceAmount != null ? listing.priceAmount : "—"}
-            {listing.priceCurrency && (
-              <span className="ml-1 text-sm font-normal text-muted-foreground">
-                {listing.priceCurrency}
-              </span>
-            )}
-          </div>
-          {listing.instantBuyout && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-400">
-              instant buyout
+      <div className="border-b border-border bg-muted/40 p-4">
+        <h3 className="truncate text-base font-semibold">{name}</h3>
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+        <div className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-400">
+          {listing.priceAmount != null ? listing.priceAmount : "—"}
+          {listing.priceCurrency && (
+            <span className="ml-1.5 text-base font-medium text-emerald-400/80">
+              {listing.priceCurrency}
             </span>
           )}
         </div>
       </div>
 
       <div className="space-y-3 p-4">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Seller</dt>
-          <dd className="truncate">{listing.sellerCharacter || listing.sellerAccount || "—"}</dd>
-          {listing.listedAgo && (
-            <>
-              <dt className="text-muted-foreground">Listed</dt>
-              <dd>{listing.listedAgo}</dd>
-            </>
-          )}
-          <dt className="text-muted-foreground">From</dt>
-          <dd className="truncate">{listing.searchTitle}</dd>
-        </dl>
+        <p className="truncate text-xs">
+          <span className="text-muted-foreground">Seller: </span>
+          {listing.sellerCharacter || listing.sellerAccount || "—"}
+        </p>
 
         {listing.mods.length > 0 && (
           <ul className="space-y-0.5 rounded-md bg-muted/40 p-2.5">
@@ -115,7 +98,6 @@ function Card({
             {label(listing.whisperState)}
           </Button>
           {listing.corrupted && <span className="text-xs text-destructive">corrupted</span>}
-          <TokenTtl expMs={listing.tokenExpMs} />
         </div>
 
         {error && <p className="text-[11px] text-destructive">{error}</p>}
@@ -137,21 +119,4 @@ function label(state: WhisperState): string {
     default:
       return "Travel again"
   }
-}
-
-/** Whisper tokens live 300s; the server re-fetches on manual travel, so this is informational. */
-function TokenTtl({ expMs }: { expMs: number | null }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (expMs == null) return
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [expMs])
-  if (expMs == null) return null
-  const left = Math.max(0, Math.floor((expMs - now) / 1000))
-  return (
-    <span className="ml-auto text-[10px] text-muted-foreground">
-      {left === 0 ? "token refreshes on travel" : `token ${left}s`}
-    </span>
-  )
 }

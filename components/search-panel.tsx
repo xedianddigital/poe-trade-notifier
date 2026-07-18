@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import type { SearchStatus, WatchedSearch } from "@/lib/poe/types"
+import { MAX_ACTIVE_SEARCHES, type SearchStatus, type WatchedSearch } from "@/lib/poe/types"
 
 export function SearchPanel({
   statuses,
@@ -72,7 +72,12 @@ export function SearchPanel({
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-3 text-sm font-semibold">Watched searches</h2>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold">Watched searches</h2>
+        <span className="text-[11px] text-muted-foreground">
+          {searches.filter((s) => s.active).length}/{MAX_ACTIVE_SEARCHES} active
+        </span>
+      </div>
 
       <div className="mb-3 space-y-2">
         <input

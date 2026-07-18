@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'PoE Trade Notifier',
+  title: 'SpeedyCadiro',
   description: 'Local live-search notifier for Path of Exile trade',
   icons: {
     icon: [

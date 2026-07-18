@@ -1,4 +1,4 @@
-# PoE Trade Notifier
+# SpeedyCadiro
 
 A local live-search notifier for Path of Exile trade. It watches official trade
 searches over PoE's own live-search WebSocket, shows new listings the moment
