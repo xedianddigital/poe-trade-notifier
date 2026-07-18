@@ -83,6 +83,8 @@ export const DEFAULT_SETTINGS: Settings = {
 // ---- SSE event payloads ----
 
 export type ServerEvent =
+  /** Sent once when a client attaches, so it can rehydrate without a refresh. */
+  | { type: "snapshot"; listings: Listing[]; statuses: Record<string, SearchStatus> }
   | { type: "listing"; listing: Listing }
   | { type: "status"; searchInternalId: string; status: SearchStatus; error?: string }
   | { type: "session"; valid: boolean; message?: string }
