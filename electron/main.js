@@ -308,7 +308,7 @@ function buildMenu() {
       submenu: [
         {
           label: 'Project page',
-          click: () => shell.openExternal('https://github.com/xedianddigital/poe-trade-notifier'),
+          click: () => shell.openExternal('https://github.com/xedianddigital/speedy-cadiro'),
         },
         {
           label: `Version ${app.getVersion()}`,

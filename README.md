@@ -1,34 +1,74 @@
 # SpeedyCadiro
 
-A local live-search notifier for Path of Exile trade. It watches official trade
-searches over PoE's own live-search WebSocket, shows new listings the moment
-they appear, and can send the same "Travel to Hideout" whisper the official
-trade site's button sends.
+The shortest path from a Path of Exile trade listing to standing in the seller's
+hideout to buy it.
 
-Everything runs on your machine. Your cookies are stored only in `.data/config.json`
-(gitignored) and are sent nowhere except `pathofexile.com`.
+Point it at one or more live trade searches. The moment a matching listing
+appears, SpeedyCadiro travels you to the seller automatically, shows you what
+you're buying, and pauses so you can complete the trade without being pulled
+away. Then it waits for the next one.
+
+Everything runs on your machine. Your session stays local and is sent nowhere
+except pathofexile.com.
 
 ---
 
 ## Install (Windows)
 
-1. Download **`PoE Trade Notifier-Setup-x.y.z.exe`** from the
-   [Releases page](../../releases/latest).
-2. Run it. It installs per-user and launches itself — no admin rights, no
-   wizard, nothing else to install.
-3. Windows SmartScreen will warn that the app is unsigned. Click **More info →
-   Run anyway**. (Code signing certificates cost money; the build is
-   reproducible from source via GitHub Actions if you'd rather verify it.)
+1. Download **`SpeedyCadiro-Setup-x.y.z.exe`** from the
+   [latest release](../../releases/latest).
+2. Run it. It installs for your user and launches itself — no admin rights, no
+   setup wizard, nothing else to install.
 
-Everything is bundled: you do **not** need Node.js, pnpm, or anything else.
+### "Windows protected your PC"
 
-Your session and settings are stored in
-`%APPDATA%\poe-trade-notifier\data\config.json` and are not touched by
-uninstalling.
+You'll see a blue **SmartScreen** notice the first time. Click **More info →
+Run anyway**.
+
+This is normal for software from an independent developer — it just means the
+app isn't signed with a paid certificate, not that anything is wrong with it.
+Big companies pay for code-signing certificates that Windows recognises; a small
+free project doesn't. The whole thing is open source and built in public here on
+GitHub if you'd like to see exactly what it does.
 
 ---
 
-## Running from source (developers)
+## Using it
+
+1. **Sign in** — click *Sign in to pathofexile.com* and log in as usual. The
+   window closes itself once you're in, and stays signed in across restarts.
+2. **Add a search** — on the trade site, build a search with a **Buyout** price
+   filter, copy its URL, and paste it in. Add it, and it starts watching.
+3. **Wait** — when a listing matches, you're travelled to the seller, the
+   purchase window opens, and you buy manually in game.
+
+You can watch up to **5 searches** at once. They all feed one travel: whichever
+matches first sends you, and every search pauses during the purchase window so a
+second match can't yank you elsewhere mid-trade.
+
+### Settings
+
+- **Travel interval** (10–90s) — how long every search pauses after a travel, so
+  you have time to finish buying. Also how long the current listing stays on
+  screen.
+- **File → Options** — pick a notification sound (or turn it off).
+
+Only **instant-buyout** listings are used — the ones that offer a direct
+Travel-to-Hideout. Negotiable-price listings are skipped.
+
+---
+
+## A note on fair use
+
+SpeedyCadiro travels and whispers on your account automatically. GGG tolerates
+live-search notifiers, but automated whispering sits in a grey area of their
+terms. It is deliberately conservative — one connection per search, it obeys the
+rate limits pathofexile.com publishes, and it never hammers reconnects — but
+use it sensibly and don't leave it running unattended.
+
+---
+
+## Running from source
 
 Requires **Node.js 20.9+**.
 
@@ -39,135 +79,28 @@ pnpm dev        # http://localhost:3000 in a browser
 pnpm electron   # or run the desktop shell against the dev server
 ```
 
-Building installers yourself:
+Build installers:
 
 ```bash
-pnpm dist:win     # Windows NSIS installer  -> dist/
-pnpm dist:linux   # Linux AppImage          -> dist/
-pnpm dist:dir     # unpacked app, no installer (fastest for testing)
+pnpm dist:win     # Windows installer  -> dist/
+pnpm dist:linux   # Linux AppImage     -> dist/
+pnpm dist:dir     # unpacked app, no installer (fastest to test)
 ```
 
-Installers for tagged releases are built on GitHub Actions; see
-`.github/workflows/build.yml`.
-
-> After running any `dist:*` script, `pnpm dev` will fail to read cookies:
-> electron-builder recompiles `better-sqlite3` against Electron's ABI, which
-> plain Node can't load. Run `pnpm rebuild:node` to switch it back.
-
----
-
-### Connecting your session
-
-**Sign in to pathofexile.com** — the primary path. Opens a login window inside
-the app; log in normally and it captures the session. Nothing is read from disk,
-so it works on every browser and every version, including Chrome 127+ where
-cookies are sealed with app-bound encryption no external program can read. The
-Cloudflare clearance is issued to this window, so the User-Agent matches by
-construction. The login persists across restarts.
-
-**Paste cookies manually** — the fallback. `F12` → **Application** (Chrome/Edge)
-or **Storage** (Firefox) → **Cookies** → `https://www.pathofexile.com`. Copy
-`POESESSID` (required), plus `cf_clearance` and `POETOKEN` if present.
-
-The **User-Agent field must match the browser the cookies came from** —
-Cloudflare binds `cf_clearance` to it. Copy it from that browser's console:
-`navigator.userAgent`.
-
-A session only shows *connected* once pathofexile.com confirms it is genuinely
-logged in (not merely that the cookies exist), so a green state means the live
-search will actually accept it.
-
----
-
-## Using it
-
-1. **Session** — click *Detect from browser*, or paste cookies manually. The
-   pill shows `valid` once the API accepts them.
-2. **Watched searches** — paste a trade search URL, e.g.
-   `https://www.pathofexile.com/trade/search/Mirage/aBcDeFg`. Add it, and the
-   status dot goes green when the live socket connects.
-3. **Feed** — new listings appear newest-first. Click **Travel** to whisper the
-   seller.
-
-Live search only pushes items listed **from now on**. An empty feed on a quiet
-search is normal.
-
-### The two modes
-
-**Auto-travel** — off by default, behind two switches: a global master toggle in
-Settings and a per-search checkbox. On the first matching listing it whispers
-the seller immediately, then **stops scanning that search for 5–30s**
-(configurable, default 15s). Without that pause a busy search would yank you
-between hideouts once a second. The socket stays connected during the pause and
-incoming listings are simply discarded, which costs zero API calls.
-
-**Manual travel** — the feed holds a bounded number of listings (default 10),
-newest first. Each has a Travel button and a draining bar showing its remaining
-life. Listings expire after 3 minutes (configurable) and are replaced by newer
-ones; when the buffer is full the oldest is evicted.
-
-This whispers sellers automatically from your account. GGG tolerates live-search
-notifiers, but automated whispering is a grey area in their terms. Keep the
-cooldown sane and don't leave it running unattended.
-
-## Staying under GGG's limits
-
-PoE actively defends against bots, so the app is deliberately conservative:
-
-- **Published budgets are obeyed.** Every response carries `X-Rate-Limit-*`
-  headers (`hits:period:restrict`). All requests are serialised through one
-  limiter that paces itself from the tightest published rule at 60% of budget,
-  adds jitter, and sits out any restriction rather than discovering limits by
-  being 429'd.
-- **At most 5 live searches** run at once. One WebSocket per search is the
-  clearest bot signal there is.
-- **Cooldowns discard rather than disconnect.** Reconnecting on every cooldown
-  is exactly what earns a 1013.
-- **Reconnects back off exponentially** (1s→30s), and only reset after a socket
-  has stayed up 30s — because PoE accepts the upgrade and *then* closes when it
-  wants you to slow down.
-
----
-
-## Troubleshooting
-
-**Status dot stuck on error, log says 1013**
-The live socket rejects a **stale POESESSID** even while the REST API still
-accepts it, and reports it as "try again later". Click *Detect from browser*
-again to pick up the rotated cookie.
-
-Repeatedly reconnecting also earns a real 1013 throttle that persists for a
-while. The app backs off automatically (60s floor); wait it out rather than
-restarting in a loop.
-
-**Session shows `invalid` right after detecting**
-Usually a User-Agent mismatch. Open the app in the same browser your cookies
-came from, or paste that browser's User-Agent manually.
-
-**`next dev` exits immediately**
-Node is too old. Check with `node --version`; you need 20.9+.
+Tagging a release (`v0.5.0`) builds Windows and Linux installers on GitHub
+Actions and attaches them to a GitHub Release; see `.github/workflows/build.yml`.
 
 ---
 
 ## How it works
 
-```
-browser cookie store ──> lib/poe/cookie-detect.ts ──> .data/config.json
-                                                            │
-trade search URL ──> lib/poe/parse-url.ts ──> watched search
-                                                            │
-                                    lib/poe/live-engine.ts  │
-                          wss://…/api/trade/live/{league}/{id}
-                                            │ pushes result ids
-                                            ▼
-                            POST /api/trade/fetch (≤10 per call)
-                                            │ full listings
-                                            ▼
-                          SSE  /api/events  ──> dashboard UI
-                                            │
-                        POST /api/trade/whisper  ("Travel to Hideout")
-```
+A small Next.js server runs inside an Electron desktop shell. For each watched
+search it holds one WebSocket to pathofexile.com's live-search endpoint. When
+the server pushes a new listing it is fetched, and if it's an instant buyout the
+app whispers the seller — the same Travel-to-Hideout request the trade site's
+own button sends — then pauses every search for the travel interval. The UI is
+driven over Server-Sent Events, so it updates the instant something happens.
 
-Whisper tokens are JWTs that expire **300 seconds** after they are issued, so a
-manual travel always re-fetches the listing for a fresh token first. Auto-travel
-uses the token straight off the live push, which is by definition fresh.
+Session cookies and settings live in `%APPDATA%\speedy-cadiro\` (Windows) or
+`~/.config/speedy-cadiro/` (Linux) and are never committed or transmitted
+anywhere but pathofexile.com.

@@ -200,7 +200,12 @@ export async function fetchListings(
   const referer = `${BASE}/trade/search/${encodeURIComponent(league)}/${searchId}`
   const url = `${BASE}/api/trade/fetch/${batch.join(",")}?query=${searchId}&realm=pc`
 
-  const res = await paced(url, { headers: baseHeaders(session, referer), cache: "no-store" })
+  // Fetch immediately, NOT through the paced queue. A live-search result token
+  // expires ~10s after it is issued, so any queued delay makes it expire and
+  // return 400. Still feed the response headers back to the limiter so the rest
+  // of the app's pacing stays accurate.
+  const res = await fetch(url, { headers: baseHeaders(session, referer), cache: "no-store" })
+  rateLimiter.observe(res)
   const text = await res.text()
 
   if (res.status === 429) {
@@ -208,6 +213,9 @@ export async function fetchListings(
     rateLimiter.penalise(wait)
     throw new RateLimitError("Rate limited by trade fetch.", wait)
   }
+  // 400 means the result token expired before we fetched it - the listing moved
+  // too fast. That's normal on a hot search, not an error; return nothing.
+  if (res.status === 400) return []
   detectAuthFailure(res.status, text)
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`)
 

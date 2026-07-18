@@ -68,9 +68,7 @@ export function Dashboard() {
               <span className="ml-2 text-xs font-normal text-muted-foreground">v{version}</span>
             )}
           </h1>
-          <p className="text-xs text-muted-foreground">
-            Auto-travel to matching listings. Runs locally — nothing leaves this machine.
-          </p>
+          <p className="text-xs text-muted-foreground">Auto-travel to matching listings.</p>
         </div>
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span
