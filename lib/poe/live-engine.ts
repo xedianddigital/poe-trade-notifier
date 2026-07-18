@@ -306,17 +306,27 @@ class LiveEngine {
     const throttled = code === 1013 || code === 1008
     let delay = throttled ? Math.max(backoff, THROTTLED_MIN_MS) : backoff
 
-    // A policy close often means the cookies themselves are the problem: a
-    // cf_clearance bound to a different browser is rejected, while sending none
-    // is fine. Work down to a smaller cookie set rather than retrying the same
-    // rejected combination forever.
+    // Step down the cookie set once per full cycle in case cf_clearance is the
+    // problem - but keep the full penalty delay between attempts. Retrying fast
+    // is itself a likely cause of a policy close (GGG rejects rapid reconnects
+    // and duplicate live connections), so the previous socket must be given
+    // time to age out server-side.
     if (throttled) {
       const next = COOKIE_VARIANTS[COOKIE_VARIANTS.indexOf(conn.cookieVariant) + 1]
       if (next) {
         conn.cookieVariant = next
-        // The cookies changed, so this isn't the same request being hammered.
-        delay = Math.min(delay, 5_000)
-        this.log("warn", `${conn.search.title}: retrying ${describeVariant(next)}.`)
+        this.log("warn", `${conn.search.title}: will retry ${describeVariant(next)} after backing off.`)
+      } else {
+        // Cycled every cookie set and still refused. More retries won't help;
+        // stop and let the user act rather than loop indefinitely.
+        conn.stopping = true
+        this.setStatus(
+          conn,
+          "error",
+          "Live search keeps getting rejected (1008/1013) on every cookie set. Your session may be invalid, or this IP/User-Agent is temporarily blocked. Re-enter your session or wait a few minutes, then resume.",
+        )
+        this.log("error", `${conn.search.title}: giving up after trying every cookie set.`)
+        return
       }
     }
 
@@ -341,8 +351,26 @@ class LiveEngine {
     try {
       msg = JSON.parse(raw)
     } catch {
+      // A non-JSON frame is itself a clue about why a close follows.
+      this.log("warn", `${conn.search.title}: unexpected frame ${raw.slice(0, 120)}`)
       return
     }
+
+    // The server announces auth state on connect. Surfacing it turns a mystery
+    // 1008 into "the session was rejected" or confirms the session is fine and
+    // the close is about something else.
+    if (typeof msg.auth === "boolean") {
+      this.log(
+        msg.auth ? "info" : "error",
+        msg.auth
+          ? `${conn.search.title}: server accepted the session.`
+          : `${conn.search.title}: server did NOT accept the session (auth:false). The POESESSID is invalid or expired.`,
+      )
+      if (!msg.auth) {
+        this.emit({ type: "session", valid: false, message: "Live search rejected the session (auth:false)." })
+      }
+    }
+
     if (msg.error) {
       this.setStatus(conn, "error", String(msg.error))
       return

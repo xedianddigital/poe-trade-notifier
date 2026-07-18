@@ -105,6 +105,12 @@ async function startServer() {
 async function runLogin() {
   const ses = session.fromPartition(POE_PARTITION)
 
+  // Start every login clean. pathofexile.com sets a guest POESESSID before you
+  // actually sign in, and a persisted one from a failed attempt is what left a
+  // user stuck on a 401 with no way to reset. Wiping first guarantees the
+  // cookies we capture belong to a real, completed login.
+  await ses.clearStorageData({ storages: ['cookies'] })
+
   // Do NOT override the User-Agent here. Spoofing a plain Chrome agent while
   // Chromium still sends its own Sec-CH-UA client hints (which name Electron)
   // produces a contradiction Cloudflare detects, and its check then loops
@@ -255,12 +261,7 @@ function buildMenu() {
   const template = [
     {
       label: 'File',
-      submenu: [
-        ...(process.platform === 'win32'
-          ? [{ label: 'Uninstall…', click: () => void runUninstall() }, { type: 'separator' }]
-          : []),
-        { role: 'quit' },
-      ],
+      submenu: [{ role: 'quit' }],
     },
     {
       label: 'View',
@@ -277,6 +278,10 @@ function buildMenu() {
           label: `Version ${app.getVersion()}`,
           enabled: false,
         },
+        { type: 'separator' },
+        ...(process.platform === 'win32'
+          ? [{ label: 'Uninstall', click: () => void runUninstall() }]
+          : []),
       ],
     },
   ]
