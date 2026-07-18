@@ -256,15 +256,20 @@ async function tryChromium(): Promise<DetectResult> {
 
 // ---------- Firefox (unencrypted sqlite) ----------
 
-function firefoxProfilesRoot(): string | null {
+function firefoxProfileRoots(): string[] {
   const home = os.homedir()
   if (process.platform === "win32") {
-    return path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "Mozilla", "Firefox", "Profiles")
+    return [path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "Mozilla", "Firefox", "Profiles")]
   }
   if (process.platform === "darwin") {
-    return path.join(home, "Library", "Application Support", "Firefox", "Profiles")
+    return [path.join(home, "Library", "Application Support", "Firefox", "Profiles")]
   }
-  return path.join(home, ".mozilla", "firefox")
+  // Linux: plain, snap, and flatpak installs each keep their own profile tree.
+  return [
+    path.join(home, ".mozilla", "firefox"),
+    path.join(home, "snap", "firefox", "common", ".mozilla", "firefox"),
+    path.join(home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox"),
+  ]
 }
 
 async function tryFirefox(): Promise<DetectResult> {
@@ -274,14 +279,21 @@ async function tryFirefox(): Promise<DetectResult> {
   } catch (err) {
     return { ok: false, found: [], reason: `SQLite reader unavailable (${(err as Error).message}).` }
   }
-  const root = firefoxProfilesRoot()
-  if (!root || !(await exists(root))) {
+  const roots: string[] = []
+  for (const root of firefoxProfileRoots()) {
+    if (await exists(root)) roots.push(root)
+  }
+  if (roots.length === 0) {
     return { ok: false, found: [], reason: "No Firefox profiles directory found." }
   }
-  const entries = await fs.readdir(root, { withFileTypes: true })
+  const entries: { root: string; name: string }[] = []
+  for (const root of roots) {
+    for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+      if (entry.isDirectory()) entries.push({ root, name: entry.name })
+    }
+  }
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const cookiesPath = path.join(root, entry.name, "cookies.sqlite")
+    const cookiesPath = path.join(entry.root, entry.name, "cookies.sqlite")
     if (!(await exists(cookiesPath))) continue
     try {
       const tmp = path.join(os.tmpdir(), `poe-ff-${Date.now()}.db`)
