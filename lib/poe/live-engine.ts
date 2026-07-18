@@ -21,9 +21,22 @@ import {
 
 const WS_BASE = "wss://www.pathofexile.com/api/trade/live"
 
-/** Reconnect backoff: 1s, 2s, 4s … capped. Reset once a socket opens. */
+/** Reconnect backoff: 1s, 2s, 4s … capped. */
 const BACKOFF_BASE_MS = 1000
 const BACKOFF_MAX_MS = 30_000
+
+/**
+ * PoE accepts the upgrade and *then* closes with 1013 when it wants us to slow
+ * down, so "opened" is not proof of health. Only clear the backoff after the
+ * socket has stayed up this long, otherwise a reject loop never backs off.
+ */
+const STABLE_MS = 30_000
+
+/** Minimum wait after an explicit "try again later" / policy close. */
+const THROTTLED_MIN_MS = 60_000
+
+/** Keep the connection from being reaped as idle. */
+const PING_MS = 30_000
 
 /** /fetch accepts at most 10 ids per call. */
 const FETCH_BATCH = 10
@@ -39,6 +52,9 @@ interface Connection {
   status: SearchStatus
   attempts: number
   reconnectTimer: NodeJS.Timeout | null
+  /** Fires once a socket has been up long enough to count as healthy. */
+  stableTimer: NodeJS.Timeout | null
+  pingTimer: NodeJS.Timeout | null
   /** Set when we deliberately close, so onclose doesn't schedule a reconnect. */
   stopping: boolean
   /** Ids pushed by the socket that haven't been fetched yet. */
@@ -120,6 +136,8 @@ class LiveEngine {
       status: "idle",
       attempts: 0,
       reconnectTimer: null,
+      stableTimer: null,
+      pingTimer: null,
       stopping: false,
       pending: [],
       flushTimer: null,
@@ -135,6 +153,7 @@ class LiveEngine {
     conn.stopping = true
     if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
     if (conn.flushTimer) clearTimeout(conn.flushTimer)
+    this.clearTimers(conn)
     conn.ws?.close()
     conn.ws = null
     this.connections.delete(id)
@@ -177,9 +196,18 @@ class LiveEngine {
     conn.ws = ws
 
     ws.on("open", () => {
-      conn.attempts = 0
       this.setStatus(conn, "connected")
       this.log("info", `Live search connected: ${conn.search.title}`)
+
+      // Don't trust "open" alone - wait for the socket to prove it survives.
+      conn.stableTimer = setTimeout(() => {
+        conn.attempts = 0
+        conn.stableTimer = null
+      }, STABLE_MS)
+
+      conn.pingTimer = setInterval(() => {
+        if (conn.ws?.readyState === WebSocket.OPEN) conn.ws.ping()
+      }, PING_MS)
     })
 
     ws.on("message", (raw) => {
@@ -202,23 +230,47 @@ class LiveEngine {
       }
     })
 
-    ws.on("close", () => {
+    ws.on("close", (code) => {
+      this.clearTimers(conn)
       conn.ws = null
       if (conn.stopping) return
-      this.setStatus(conn, "disconnected")
-      this.scheduleReconnect(conn)
+      this.setStatus(conn, "disconnected", describeClose(code))
+      this.scheduleReconnect(conn, code)
     })
   }
 
-  private scheduleReconnect(conn: Connection): void {
+  private clearTimers(conn: Connection): void {
+    if (conn.stableTimer) {
+      clearTimeout(conn.stableTimer)
+      conn.stableTimer = null
+    }
+    if (conn.pingTimer) {
+      clearInterval(conn.pingTimer)
+      conn.pingTimer = null
+    }
+  }
+
+  private scheduleReconnect(conn: Connection, code?: number): void {
     if (conn.stopping) return
-    const delay = Math.min(BACKOFF_BASE_MS * 2 ** conn.attempts, BACKOFF_MAX_MS)
+
+    const backoff = Math.min(BACKOFF_BASE_MS * 2 ** conn.attempts, BACKOFF_MAX_MS)
+    // 1013 (try again later) and 1008 (policy violation) are GGG telling us to
+    // stop. Honour that with a real pause rather than the usual ramp.
+    const throttled = code === 1013 || code === 1008
+    const delay = throttled ? Math.max(backoff, THROTTLED_MIN_MS) : backoff
+
     conn.attempts += 1
     if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
     conn.reconnectTimer = setTimeout(() => {
       void this.connect(conn)
     }, delay)
-    this.log("warn", `${conn.search.title}: reconnecting in ${Math.round(delay / 1000)}s.`)
+
+    this.log(
+      throttled ? "error" : "warn",
+      throttled
+        ? `${conn.search.title}: server asked us to back off (${code}). Waiting ${Math.round(delay / 1000)}s.`
+        : `${conn.search.title}: reconnecting in ${Math.round(delay / 1000)}s.`,
+    )
   }
 
   // ---- incoming ids -> listings ----
@@ -389,6 +441,19 @@ function cookieHeader(session: Session): string {
   if (session.poetoken) parts.push(`POETOKEN=${session.poetoken}`)
   if (session.cfClearance) parts.push(`cf_clearance=${session.cfClearance}`)
   return parts.join("; ")
+}
+
+function describeClose(code: number): string | undefined {
+  switch (code) {
+    case 1013:
+      return "Server said try again later (1013) - too many live searches or connecting too fast."
+    case 1008:
+      return "Server rejected the connection (1008 policy violation)."
+    case 1006:
+      return "Connection dropped abnormally (1006)."
+    default:
+      return undefined
+  }
 }
 
 function sleep(ms: number): Promise<void> {

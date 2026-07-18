@@ -3,9 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: 'PoE Trade Notifier',
+  description: 'Local live-search notifier for Path of Exile trade',
   icons: {
     icon: [
       {
