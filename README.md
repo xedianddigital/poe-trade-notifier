@@ -58,33 +58,24 @@ Installers for tagged releases are built on GitHub Actions; see
 
 ### Connecting your session
 
-**Sign in to pathofexile.com** (recommended). Opens a login window inside the
-app. Nothing is read from disk, so it works on every browser and every version
-— including Chrome 127+, where cookies cannot be read externally at all. The
+**Sign in to pathofexile.com** — the primary path. Opens a login window inside
+the app; log in normally and it captures the session. Nothing is read from disk,
+so it works on every browser and every version, including Chrome 127+ where
+cookies are sealed with app-bound encryption no external program can read. The
 Cloudflare clearance is issued to this window, so the User-Agent matches by
 construction. The login persists across restarts.
 
-**Detect from browser** reads cookies from an installed browser's profile
-instead:
-
-| Browser | Result |
-|---|---|
-| **Firefox** (any version) | Works — cookies are stored unencrypted. |
-| **Chrome / Edge / Brave ≤ 126** | Works via DPAPI. |
-| **Chrome / Edge / Brave ≥ 127** | **Cannot work.** Use the in-app sign-in. |
-
-Chrome 127 introduced *app-bound encryption*: the key lives in a Windows
-service that deliberately refuses other processes. No program can read those
-cookies — that's the point of the feature, not a bug here.
-
-**Paste manually** is the last resort: `F12` → **Application** (Chrome/Edge) or
-**Storage** (Firefox) → **Cookies** → `https://www.pathofexile.com`. Copy
+**Paste cookies manually** — the fallback. `F12` → **Application** (Chrome/Edge)
+or **Storage** (Firefox) → **Cookies** → `https://www.pathofexile.com`. Copy
 `POESESSID` (required), plus `cf_clearance` and `POETOKEN` if present.
 
 The **User-Agent field must match the browser the cookies came from** —
-Cloudflare binds `cf_clearance` to it. The app prefills a matching agent from
-the browser it finds installed, but to be certain, copy `navigator.userAgent`
-from that browser's console.
+Cloudflare binds `cf_clearance` to it. Copy it from that browser's console:
+`navigator.userAgent`.
+
+A session only shows *connected* once pathofexile.com confirms it is genuinely
+logged in (not merely that the cookies exist), so a green state means the live
+search will actually accept it.
 
 ---
 

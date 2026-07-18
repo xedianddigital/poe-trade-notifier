@@ -72,25 +72,41 @@ function retryAfterMs(res: Response): number {
   return 5000
 }
 
-/** Validate the stored session by hitting a lightweight authenticated endpoint. */
+/**
+ * Validate that the session is genuinely logged in.
+ *
+ * /api/trade/data/leagues is public - it returns JSON even for a bogus or guest
+ * session, so it reports every session as valid and is useless here. /my-account
+ * instead redirects to /login unless you are actually authenticated, so a 200
+ * means a real logged-in account and a redirect means the session is guest or
+ * expired. This is what makes "connected" mean the live socket will accept it.
+ */
 export async function validateSession(session: Session): Promise<{ ok: boolean; account?: string; reason?: string }> {
   try {
-    const res = await paced(`${BASE}/api/trade/data/leagues`, {
-      headers: baseHeaders(session),
+    const res = await paced(`${BASE}/my-account`, {
+      headers: { ...baseHeaders(session, `${BASE}/`), Accept: "text/html" },
+      redirect: "manual",
       cache: "no-store",
     })
-    const text = await res.text()
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, reason: res.status === 403 ? "Cloudflare/forbidden - re-detect cookies + User-Agent." : "Session expired." }
+
+    // redirect:"manual" surfaces the 3xx itself; an opaqueredirect shows as 0.
+    if (res.status === 0 || (res.status >= 300 && res.status < 400)) {
+      return { ok: false, reason: "Not logged in - the session is a guest or has expired." }
+    }
+    if (res.status === 401) return { ok: false, reason: "Session expired." }
+    if (res.status === 403) {
+      return { ok: false, reason: "Cloudflare blocked the request - the User-Agent likely doesn't match the cookies." }
     }
     if (!res.ok) return { ok: false, reason: `Unexpected status ${res.status}.` }
-    // If we can parse JSON, the session/cookies work.
-    try {
-      JSON.parse(text)
-    } catch {
-      return { ok: false, reason: "Got a non-JSON response (likely a Cloudflare challenge)." }
+
+    const html = await res.text()
+    // A 200 that is actually the login form (some setups render it inline) still
+    // means not-logged-in. A real account page has a logout control.
+    if (/name=["']login["']|id=["']login["']|type=["']password["']/i.test(html) && !/logout/i.test(html)) {
+      return { ok: false, reason: "Not logged in - reached the login page." }
     }
-    return { ok: true }
+    const account = html.match(/\/account\/view-profile\/([^"'/?]+)/i)?.[1]
+    return { ok: true, account: account ? decodeURIComponent(account) : undefined }
   } catch (err) {
     return { ok: false, reason: (err as Error).message }
   }

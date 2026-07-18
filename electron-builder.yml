@@ -6,8 +6,8 @@ directories:
   output: dist
   buildResources: build
 
-# No asar: the Next server forks as a child process and loads a native module,
-# both of which are simplest and most reliable against real files on disk.
+# No asar: the Next server is forked as a child process, which is simplest and
+# most reliable against real files on disk.
 asar: false
 
 files:
@@ -22,7 +22,6 @@ files:
   - '!node_modules/**/test/**'
   - '!node_modules/**/tests/**'
   - '!node_modules/**/docs/**'
-  - '!node_modules/better-sqlite3/{deps,src,build/Release/obj,build/Release/obj.target}/**'
   - from: .next/standalone
     to: server
     filter:
@@ -37,9 +36,8 @@ files:
       - '!.data/**'
       - '!**/.data/**'
 
-# Rebuild native modules against Electron's ABI, not the system Node's.
-npmRebuild: true
-nodeGypRebuild: false
+# No native modules to rebuild against Electron's ABI anymore.
+npmRebuild: false
 
 win:
   target:

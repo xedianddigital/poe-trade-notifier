@@ -4,7 +4,6 @@
 // validation result. The UI has no reason to ever hold the raw cookies.
 
 import { clearSession, getSession, saveSession } from "@/lib/poe/config"
-import { detectUserAgent } from "@/lib/poe/cookie-detect"
 import { validateSession } from "@/lib/poe/poe-client"
 import { engine } from "@/lib/poe/live-engine"
 import type { Session } from "@/lib/poe/types"
@@ -46,22 +45,14 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ ok: false, error: "POESESSID is required." }, { status: 400 })
   }
 
-  // cf_clearance is bound to the exact User-Agent of the browser that earned it.
-  //
-  // Normally the desktop shell's own agent identifies Electron and would always
-  // mismatch, so it is replaced with a real installed browser's. The exception
-  // is the in-app login: those cookies were issued to this window, so its agent
-  // is the only correct one.
-  let userAgent = body.userAgent?.trim() ?? ""
-  if (!body.trustUserAgent && (!userAgent || /Electron\//i.test(userAgent))) {
-    userAgent = (await detectUserAgent())?.userAgent ?? ""
-  }
-
+  // cf_clearance is bound to the User-Agent of the browser that earned it. The
+  // in-app login supplies the matching agent (trustUserAgent); manual paste
+  // supplies whatever the user entered in the User-Agent field.
   const session: Session = {
     poesessid,
     poetoken: body.poetoken?.trim() ?? "",
     cfClearance: body.cfClearance?.trim() ?? "",
-    userAgent,
+    userAgent: body.userAgent?.trim() ?? "",
     updatedAt: Date.now(),
   }
 

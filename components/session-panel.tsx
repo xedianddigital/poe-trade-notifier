@@ -1,8 +1,7 @@
 "use client"
 
-// Session setup: one-click detection from the local browser profile, with
-// manual paste as the always-available fallback (Chrome 127+ on Windows cannot
-// be read externally at all, by design).
+// Session setup: sign in to pathofexile.com inside the app (the reliable path,
+// works on every browser version), with manual cookie paste as a fallback.
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -60,53 +59,6 @@ export function SessionPanel({
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const detect = async () => {
-    setBusy(true)
-    setNotice({ kind: "warn", text: "Reading cookies from your browser…" })
-    try {
-      const res = await fetch("/api/session/detect", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // The real UA beats any reconstruction: cf_clearance is bound to it.
-        body: JSON.stringify({ userAgent: navigator.userAgent }),
-      })
-      const data = await res.json()
-
-      if (!res.ok || !data.ok) {
-        setNotice({
-          kind: "error",
-          text: `Couldn't read your cookies. ${data.error ?? "Unknown reason."}`,
-        })
-        // Detection is best-effort; surface the fallback instead of making the
-        // user go looking for it, prefilled with a matching User-Agent when we
-        // could work one out.
-        if (data.suggestedUserAgent) {
-          setForm((f) => ({ ...f, userAgent: f.userAgent || data.suggestedUserAgent }))
-        }
-        setManualOpen(true)
-      } else if (!data.valid) {
-        setNotice({
-          kind: "error",
-          text: `Read cookies from ${data.source}, but pathofexile.com rejected them: ${
-            data.reason ?? "unknown reason"
-          }. Make sure you're logged in there, then try again.`,
-        })
-      } else if (data.warning) {
-        setNotice({ kind: "warn", text: `Connected, with a caveat: ${data.warning}` })
-      } else {
-        setNotice({
-          kind: "ok",
-          text: `Connected. Found ${data.found.join(", ")} in ${data.source}.`,
-        })
-      }
-      await refresh()
-    } catch (err) {
-      setNotice({ kind: "error", text: `Detection failed: ${(err as Error).message}` })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const saveManual = async () => {
     setBusy(true)
@@ -203,11 +155,12 @@ export function SessionPanel({
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant={isDesktop ? "outline" : "default"} onClick={detect} disabled={busy}>
-          {busy ? "Working…" : "Detect from browser"}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setManualOpen((v) => !v)}>
-          {manualOpen ? "Hide manual" : "Paste manually"}
+        <Button
+          size="sm"
+          variant={isDesktop ? "outline" : "default"}
+          onClick={() => setManualOpen((v) => !v)}
+        >
+          {manualOpen ? "Hide manual" : "Paste cookies manually"}
         </Button>
         {info?.configured && (
           <Button size="sm" variant="ghost" onClick={clear} disabled={busy}>
@@ -231,9 +184,8 @@ export function SessionPanel({
             <li>Copy each value below. Only POESESSID is required.</li>
           </ol>
           <p className="text-[11px] text-muted-foreground">
-            The User-Agent is prefilled from the browser found on this machine. It must match the
-            browser the cookies came from — Cloudflare ties <code>cf_clearance</code> to it. To be
-            certain, open that browser&apos;s console and copy{" "}
+            The User-Agent <strong>must match the browser the cookies came from</strong> — Cloudflare
+            ties <code>cf_clearance</code> to it. Copy it from that browser&apos;s console:{" "}
             <code>navigator.userAgent</code>.
           </p>
           {(

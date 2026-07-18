@@ -5,7 +5,7 @@
 // accept connections before showing a window, so the user never sees a blank
 // page or a "connection refused" error.
 
-const { app, BrowserWindow, Menu, ipcMain, session, shell, dialog } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, net, session, shell, dialog } = require('electron')
 const path = require('node:path')
 const http = require('node:http')
 const { fork, spawn } = require('node:child_process')
@@ -136,6 +136,27 @@ async function runLogin() {
     }
   }
 
+  // pathofexile.com sets a *guest* POESESSID before you sign in, and public
+  // endpoints accept it - which is why the window used to close on a session
+  // that then 401'd. /my-account instead redirects to /login unless you are
+  // genuinely authenticated, so a 200 here means login actually completed.
+  const isLoggedIn = () =>
+    new Promise((resolve) => {
+      const req = net.request({
+        method: 'GET',
+        url: 'https://www.pathofexile.com/my-account',
+        session: ses,
+        useSessionCookies: true,
+        redirect: 'manual',
+      })
+      req.on('response', (res) => {
+        res.on('data', () => {})
+        res.on('end', () => resolve(res.statusCode === 200))
+      })
+      req.on('error', () => resolve(false))
+      req.end()
+    })
+
   return new Promise((resolve) => {
     let settled = false
     const finish = async (result) => {
@@ -146,13 +167,16 @@ async function runLogin() {
       resolve(result)
     }
 
-    // Poll rather than guess at navigation events: the cookie can be set by a
-    // redirect, an XHR, or a Cloudflare challenge the user solves by hand.
+    // Poll rather than guess at navigation events: login can complete via a
+    // redirect, an XHR, or an SSO round-trip. Settle only once the account is
+    // genuinely authenticated, so the window stays open until the user has
+    // actually signed in rather than closing on the guest session.
     const poll = setInterval(async () => {
       if (win.isDestroyed()) return
       try {
         const cookies = await readCookies()
         if (!cookies.poesessid) return
+        if (!(await isLoggedIn())) return
 
         const res = await postJson(`${baseUrl}/api/session`, {
           ...cookies,
@@ -161,13 +185,17 @@ async function runLogin() {
           // correct one and must not be replaced.
           trustUserAgent: true,
         })
-        // A POESESSID exists before login completes; only stop once the API
-        // actually accepts it.
-        if (res?.valid) await finish({ ok: true, valid: true, found: Object.keys(cookies).filter((k) => cookies[k]) })
+        if (res?.valid) {
+          await finish({
+            ok: true,
+            valid: true,
+            found: Object.keys(cookies).filter((k) => cookies[k]),
+          })
+        }
       } catch {
         // Keep polling; the user may still be logging in.
       }
-    }, 1500)
+    }, 2000)
 
     win.on('closed', () => {
       void finish({

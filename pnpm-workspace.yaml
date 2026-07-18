@@ -7,9 +7,6 @@
 nodeLinker: hoisted
 
 allowBuilds:
-  # Native binding used to read the local browser cookie DBs. Loaded lazily, so
-  # a failed build degrades to manual cookie paste rather than crashing the app.
-  better-sqlite3: true
   # Next.js image optimisation.
   sharp: true
   # Only used when building the Windows installer, which happens on CI.
