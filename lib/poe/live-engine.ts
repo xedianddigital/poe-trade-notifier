@@ -230,6 +230,25 @@ class LiveEngine {
     for (const id of [...this.connections.keys()]) this.stop(id)
   }
 
+  /**
+   * Manual escape hatch: whisper-based travel resolves inside the user's own
+   * game client, which this app has no visibility into (a zone transition can
+   * delay it well past our own cooldown). There's nothing here to detect that
+   * automatically, so this exists for the user to force a clean state by hand
+   * - clears the pause immediately and drops whatever card is showing, rather
+   * than waiting out a timer that may not reflect what actually happened
+   * in-game.
+   */
+  resetCooldown(): void {
+    this.travelPausedUntil = Date.now()
+    this.emit({ type: "cooldown", until: this.travelPausedUntil })
+    for (const id of [...this.listings.keys()]) {
+      this.listings.delete(id)
+      this.emit({ type: "expire", listingId: id })
+    }
+    this.log("info", "Cooldown reset by user.")
+  }
+
   // ---- socket lifecycle ----
 
   private async connect(conn: Connection): Promise<void> {

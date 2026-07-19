@@ -7,6 +7,7 @@ import { CurrentListing } from "@/components/current-listing"
 import { CooldownBar } from "@/components/cooldown-bar"
 import { OptionsModal } from "@/components/options-modal"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { Button } from "@/components/ui/button"
 import { useLiveFeed } from "@/components/use-live-feed"
 import {
   AUTO_TRAVEL_COOLDOWN_MAX_MS,
@@ -79,6 +80,16 @@ export function Dashboard() {
   }, [])
 
   const intervalSec = Math.round(settings.autoTravelCooldownMs / 1000)
+
+  const [resetBusy, setResetBusy] = useState(false)
+  const resetCooldown = async () => {
+    setResetBusy(true)
+    try {
+      await fetch("/api/reset", { method: "POST" })
+    } finally {
+      setResetBusy(false)
+    }
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
@@ -157,6 +168,19 @@ export function Dashboard() {
             <p className="mt-0.5 text-[10.5px] leading-tight text-muted-foreground">
               Cooldown before the next match can trigger auto-travel, so you can finish the trade
               without interruption.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2 w-full"
+              onClick={() => void resetCooldown()}
+              disabled={resetBusy}
+            >
+              Reset cooldown
+            </Button>
+            <p className="mt-1 text-[10.5px] leading-tight text-muted-foreground">
+              The app can&apos;t see whether a travel actually landed in-game (e.g. during a loading
+              screen) - use this to clear the pause and current match by hand if it looks stuck.
             </p>
           </section>
 
