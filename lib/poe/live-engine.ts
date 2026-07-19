@@ -54,6 +54,16 @@ const FETCH_DEBOUNCE_MS = 0
 /** How often to sweep the buffer for listings that have aged out. */
 const EXPIRY_SWEEP_MS = 5_000
 
+/**
+ * Hard cap on how long a whisper is allowed to take before it's treated as
+ * failed. The whisper itself is fast; what's actually slow is the shared rate
+ * limiter's queue (see rate-limit.ts) - a busy queue can otherwise leave a
+ * "travelling" card, and every search paused, for many seconds waiting on a
+ * request that may not even have gone out yet. 1-2s is the normal case; 3s is
+ * already past the point where the user should just get their searches back.
+ */
+const WHISPER_TIMEOUT_MS = 3000
+
 interface Connection {
   search: WatchedSearch
   ws: WebSocket | null
@@ -483,7 +493,11 @@ class LiveEngine {
     // The token was just issued, so it is fresh - whisper immediately.
     this.emit({ type: "whisper", listingId: listing.id, state: "sending" })
     try {
-      await sendWhisper(session, listing.whisperToken, conn.search.league, conn.search.searchId)
+      await withTimeout(
+        sendWhisper(session, listing.whisperToken, conn.search.league, conn.search.searchId),
+        WHISPER_TIMEOUT_MS,
+        `Auto-travel took longer than ${Math.round(WHISPER_TIMEOUT_MS / 1000)}s.`,
+      )
       listing.whisperState = "sent"
       listing.autoTravelled = true
       this.emit({ type: "whisper", listingId: listing.id, state: "sent" })
@@ -496,6 +510,20 @@ class LiveEngine {
         state: "error",
         message: (err as Error).message,
       })
+      this.log(
+        "warn",
+        `Auto-travel to ${listing.itemName || listing.itemType} didn't complete promptly (${(err as Error).message}) - treating as failed.`,
+      )
+      // A travel that didn't clearly complete in time isn't worth making the
+      // user sit out the full purchase-window cooldown for. Give the searches
+      // back immediately and drop the stale card rather than leaving them
+      // staring at a "travelling…" listing that may never resolve.
+      this.travelPausedUntil = Date.now()
+      this.emit({ type: "cooldown", until: this.travelPausedUntil })
+      if (this.listings.get(listing.id)?.listing === listing) {
+        this.listings.delete(listing.id)
+        this.emit({ type: "expire", listingId: listing.id })
+      }
     }
   }
 
@@ -544,7 +572,11 @@ class LiveEngine {
         return { ok: false, message: "Listing is gone." }
       }
 
-      await sendWhisper(session, fresh.whisperToken, search.league, search.searchId)
+      await withTimeout(
+        sendWhisper(session, fresh.whisperToken, search.league, search.searchId),
+        WHISPER_TIMEOUT_MS,
+        `Travel took longer than ${Math.round(WHISPER_TIMEOUT_MS / 1000)}s.`,
+      )
 
       cached.listing.whisperToken = fresh.whisperToken
       cached.listing.tokenExpMs = fresh.tokenExpMs
@@ -611,6 +643,28 @@ function describeClose(code: number): string | undefined {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Race a promise against a deadline. The underlying call (e.g. a whisper
+ * still sitting in the rate limiter's queue) isn't cancelled - it may still
+ * complete later and mutate `listing` - but the caller stops waiting on it
+ * and can treat the attempt as failed immediately.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
 }
 
 // Survive dev-mode hot reloads.

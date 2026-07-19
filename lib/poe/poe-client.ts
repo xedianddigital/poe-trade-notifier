@@ -127,11 +127,38 @@ interface RawResult {
     typeLine?: string
     baseType?: string
     corrupted?: boolean
-    explicitMods?: string[]
-    implicitMods?: string[]
-    craftedMods?: string[]
-    enchantMods?: string[]
+    // Typed as string[] because that's what GGG's docs promise, but a few
+    // item kinds (seen on cluster jewels and some enchants) send structured
+    // objects instead - stringifyMod() below is what actually enforces this.
+    explicitMods?: unknown[]
+    implicitMods?: unknown[]
+    craftedMods?: unknown[]
+    enchantMods?: unknown[]
   }
+}
+
+/**
+ * Coerce one mod entry to displayable text. Almost always already a plain
+ * string; the fallback exists because a few item kinds (cluster jewels, some
+ * enchants) have been observed sending a structured object here instead, and
+ * rendering that directly used to crash the listing card (`[object Object]`
+ * is what `String()` alone gives you - not much better, so try the shapes
+ * GGG actually uses for mod text first).
+ */
+function stringifyMod(mod: unknown): string {
+  if (typeof mod === "string") return mod
+  if (mod && typeof mod === "object") {
+    const obj = mod as Record<string, unknown>
+    for (const key of ["text", "name", "mod", "value"]) {
+      if (typeof obj[key] === "string") return obj[key] as string
+    }
+    try {
+      return JSON.stringify(obj)
+    } catch {
+      return "(unreadable mod)"
+    }
+  }
+  return String(mod)
 }
 
 function relativeTime(iso?: string): string | null {
@@ -160,7 +187,7 @@ function normalize(raw: RawResult, searchInternalId: string, searchTitle: string
     ...(item.implicitMods ?? []),
     ...(item.explicitMods ?? []),
     ...(item.craftedMods ?? []),
-  ]
+  ].map(stringifyMod)
   return {
     id: raw.id,
     searchInternalId,

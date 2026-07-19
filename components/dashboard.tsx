@@ -182,6 +182,7 @@ export function Dashboard() {
                         hour: "2-digit",
                         minute: "2-digit",
                         second: "2-digit",
+                        hour12: false,
                       })}
                     </span>
                     <span>{line.message}</span>
