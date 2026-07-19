@@ -92,9 +92,20 @@ class LiveEngine {
   constructor() {
     // SSE clients come and go; don't warn when several attach at once.
     this.events.setMaxListeners(0)
-    this.sweepTimer = setInterval(() => void this.sweepExpired(), EXPIRY_SWEEP_MS)
+    this.sweepTimer = setInterval(() => this.guard(this.sweepExpired()), EXPIRY_SWEEP_MS)
     // Don't hold the process open just for the sweep.
     this.sweepTimer.unref?.()
+  }
+
+  /**
+   * Every fire-and-forget call in this class goes through here. A rejected
+   * promise that nobody awaits becomes an `unhandledRejection`, and Node's
+   * default response to that is to kill the whole process - which takes the
+   * local server down mid-session with no way for the already-loaded UI to
+   * recover. Swallow and log instead; one bad tick must never end the run.
+   */
+  private guard(p: Promise<unknown>): void {
+    p.catch((err) => this.log("error", `Internal error: ${(err as Error).message}`))
   }
 
   /** Clear the current listing once it has outlived the travel interval. */
@@ -217,7 +228,7 @@ class LiveEngine {
     const session = await getSession()
     if (!session?.poesessid) {
       this.setStatus(conn, "error", "No session configured.")
-      this.emit({ type: "session", valid: false, message: "Add your PoE cookies first." })
+      this.emit({ type: "session", valid: false, message: "Sign in to pathofexile.com first." })
       return
     }
 
@@ -271,7 +282,7 @@ class LiveEngine {
     })
 
     ws.on("message", (raw) => {
-      void this.onMessage(conn, raw.toString())
+      this.guard(this.onMessage(conn, raw.toString()))
     })
 
     ws.on("error", (err) => {
@@ -333,7 +344,7 @@ class LiveEngine {
     conn.attempts += 1
     if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer)
     conn.reconnectTimer = setTimeout(() => {
-      void this.connect(conn)
+      this.guard(this.connect(conn))
     }, delay)
 
     this.log(
@@ -397,7 +408,7 @@ class LiveEngine {
     if (conn.flushTimer) return
     conn.flushTimer = setTimeout(() => {
       conn.flushTimer = null
-      void this.flush(conn)
+      this.guard(this.flush(conn))
     }, FETCH_DEBOUNCE_MS)
   }
 
@@ -607,5 +618,26 @@ const globalRef = globalThis as unknown as { __poeEngine?: LiveEngine }
 
 export const engine: LiveEngine = globalRef.__poeEngine ?? new LiveEngine()
 if (!globalRef.__poeEngine) globalRef.__poeEngine = engine
+
+// Last line of defense: Node's default reaction to an unhandled rejection or
+// a throw outside any try/catch is to kill the process. That took the whole
+// local server down mid-session (right as a match came in and the fetch/whisper
+// chain was busiest), leaving the already-loaded window pointed at a server
+// that would never answer again. Log and keep running instead - a dropped
+// event is recoverable, a dead server is not. Installed once per process.
+const processRef = globalThis as unknown as { __poeCrashGuardInstalled?: boolean }
+if (!processRef.__poeCrashGuardInstalled) {
+  processRef.__poeCrashGuardInstalled = true
+  process.on("unhandledRejection", (err) => {
+    engine.events.emit("event", {
+      type: "log",
+      level: "error",
+      message: `Unhandled error: ${err instanceof Error ? err.message : String(err)}`,
+    })
+  })
+  process.on("uncaughtException", (err) => {
+    engine.events.emit("event", { type: "log", level: "error", message: `Uncaught error: ${err.message}` })
+  })
+}
 
 export type { LiveEngine }

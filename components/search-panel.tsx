@@ -70,6 +70,26 @@ export function SearchPanel({
     await refresh()
   }
 
+  const setAllActive = async (active: boolean) => {
+    setBusy(true)
+    try {
+      await Promise.all(
+        searches
+          .filter((s) => s.active !== active)
+          .map((s) =>
+            fetch(`/api/searches/${s.id}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ active }),
+            }),
+          ),
+      )
+      await refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-baseline justify-between">
@@ -105,6 +125,29 @@ export function SearchPanel({
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
+
+      {searches.length > 0 && (
+        <div className="mb-3 flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            onClick={() => void setAllActive(false)}
+            disabled={busy || searches.every((s) => !s.active)}
+          >
+            Pause all
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1"
+            onClick={() => void setAllActive(true)}
+            disabled={busy || searches.every((s) => s.active)}
+          >
+            Resume all
+          </Button>
+        </div>
+      )}
 
       {searches.length === 0 ? (
         <p className="text-xs text-muted-foreground">

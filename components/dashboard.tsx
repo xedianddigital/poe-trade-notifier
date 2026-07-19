@@ -20,11 +20,24 @@ export function Dashboard() {
   const [sessionReady, setSessionReady] = useState<boolean | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [optionsOpen, setOptionsOpen] = useState(false)
+  const [update, setUpdate] = useState<{ latest: string; url: string } | null>(null)
+  const [updateDismissed, setUpdateDismissed] = useState(false)
 
   useEffect(() => {
     void window.poeDesktop?.version().then(setVersion)
     // Open Options from the native File -> Options menu.
     return window.poeDesktop?.onOpenOptions(() => setOptionsOpen(true))
+  }, [])
+
+  useEffect(() => {
+    void window.poeDesktop
+      ?.checkForUpdate()
+      .then((result) => {
+        if (result.available) setUpdate({ latest: result.latest, url: result.url })
+      })
+      .catch(() => {
+        // Offline or GitHub unreachable - just skip the notice.
+      })
   }, [])
 
   const feed = useLiveFeed(settings.soundEnabled, settings.soundName)
@@ -70,22 +83,51 @@ export function Dashboard() {
           </h1>
           <p className="text-xs text-muted-foreground">Auto-travel to matching listings.</p>
         </div>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <SessionPanel onSessionChange={setSessionReady} />
           <span
-            className={`h-2 w-2 rounded-full ${
-              feed.connected ? "bg-emerald-500" : "bg-destructive animate-pulse"
-            }`}
-          />
-          {feed.connected ? "connected" : "reconnecting"}
-        </span>
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            title={
+              feed.connected
+                ? "Live connection to the local SpeedyCadiro server is up."
+                : "Reconnecting to the local SpeedyCadiro server…"
+            }
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                feed.connected ? "bg-emerald-500" : "bg-destructive animate-pulse"
+              }`}
+            />
+            {feed.connected ? "app running" : "reconnecting"}
+          </span>
+        </div>
       </header>
+
+      {update && !updateDismissed && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2.5">
+          <p className="text-xs text-sky-400">
+            <span className="font-medium">SpeedyCadiro v{update.latest} is available.</span> You&apos;re
+            on v{version}.{" "}
+            <a href={update.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              Download it
+            </a>
+            .
+          </p>
+          <button
+            onClick={() => setUpdateDismissed(true)}
+            className="shrink-0 text-sky-400/70 hover:text-sky-400"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {sessionReady === false && (
         <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
           <p className="text-xs font-medium text-amber-400">Sign in to get started</p>
           <p className="mt-0.5 text-[11px] text-amber-400/80">
-            Use <strong>Sign in to pathofexile.com</strong> below. Searches stay paused until
-            you&apos;re signed in.
+            Use <strong>Sign in</strong> above. Searches stay paused until you&apos;re signed in.
           </p>
         </div>
       )}
@@ -98,29 +140,23 @@ export function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-[20rem_1fr]">
         <div className="space-y-4">
-          <SessionPanel onSessionChange={setSessionReady} />
-
-          <section className="rounded-lg border border-border bg-card p-4">
-            <h2 className="mb-3 text-sm font-semibold">Settings</h2>
-
-            <div className="py-1.5">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <span>Travel interval</span>
-                <span className="font-medium tabular-nums text-muted-foreground">{intervalSec}s</span>
-              </div>
-              <input
-                type="range"
-                min={AUTO_TRAVEL_COOLDOWN_MIN_MS / 1000}
-                max={AUTO_TRAVEL_COOLDOWN_MAX_MS / 1000}
-                step={5}
-                value={intervalSec}
-                onChange={(e) => patchSettings({ autoTravelCooldownMs: Number(e.target.value) * 1000 })}
-                className="mt-1 w-full accent-emerald-500"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                After a travel, all searches pause this long so you can finish buying.
-              </p>
+          <section
+            className="rounded-lg border border-border bg-card px-4 py-2.5"
+            title="After a travel, all searches pause this long so you can finish buying."
+          >
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-semibold">Travel interval</span>
+              <span className="font-medium tabular-nums text-muted-foreground">{intervalSec}s</span>
             </div>
+            <input
+              type="range"
+              min={AUTO_TRAVEL_COOLDOWN_MIN_MS / 1000}
+              max={AUTO_TRAVEL_COOLDOWN_MAX_MS / 1000}
+              step={5}
+              value={intervalSec}
+              onChange={(e) => patchSettings({ autoTravelCooldownMs: Number(e.target.value) * 1000 })}
+              className="mt-1 w-full accent-emerald-500"
+            />
           </section>
 
           <SearchPanel statuses={feed.statuses} statusErrors={feed.statusErrors} />

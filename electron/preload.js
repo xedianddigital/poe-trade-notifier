@@ -12,6 +12,13 @@ contextBridge.exposeInMainWorld('poeDesktop', {
   /** Installed app version, for the UI to display. */
   version: () => ipcRenderer.invoke('poe:version'),
 
+  /**
+   * Check GitHub for a newer release. Resolves to { available: false, current }
+   * or { available: true, current, latest, url }. Never rejects - a failed
+   * check (offline, GitHub down) just reports nothing available.
+   */
+  checkForUpdate: () => ipcRenderer.invoke('poe:check-update'),
+
   /** Run the platform uninstaller, after confirming with the user. */
   uninstall: () => ipcRenderer.invoke('poe:uninstall'),
 

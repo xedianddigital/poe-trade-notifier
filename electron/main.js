@@ -8,6 +8,7 @@
 const { app, BrowserWindow, Menu, ipcMain, session, shell, dialog } = require('electron')
 const path = require('node:path')
 const http = require('node:http')
+const https = require('node:https')
 const { fork, spawn } = require('node:child_process')
 
 /**
@@ -16,6 +17,16 @@ const { fork, spawn } = require('node:child_process')
  */
 const POE_PARTITION = 'persist:poe'
 const POE_LOGIN_URL = 'https://www.pathofexile.com/login'
+
+/**
+ * The only outbound request this app makes that isn't to pathofexile.com on
+ * the user's own behalf. It's a single anonymous GET against GitHub's public
+ * releases API - no telemetry, no identifiers - just "what's the newest tag,"
+ * so the UI can tell the user a newer build exists instead of leaving them to
+ * notice on their own.
+ */
+const RELEASES_API_URL = 'https://api.github.com/repos/xedianddigital/speedy-cadiro/releases/latest'
+const RELEASES_PAGE_URL = 'https://github.com/xedianddigital/speedy-cadiro/releases/latest'
 
 const isDev = !app.isPackaged
 const DEV_URL = 'http://localhost:3000'
@@ -83,14 +94,33 @@ async function startServer() {
   serverProcess.stdout?.on('data', (d) => console.log('[next]', d.toString().trim()))
   serverProcess.stderr?.on('data', (d) => console.error('[next]', d.toString().trim()))
   serverProcess.on('exit', (code) => {
-    if (code !== 0 && !app.isQuiting) {
-      dialog.showErrorBox('Server stopped', `The background server exited with code ${code}.`)
-    }
+    if (app.isQuiting) return
+    console.error(`[next] server exited with code ${code}`)
+    // The server can die mid-session (e.g. an unexpected error slipping past
+    // its own guards). Left alone, the already-loaded window just stares at a
+    // socket nothing answers on. Bring the server back and point the window
+    // at it again rather than leaving that behind.
+    void restartServer()
   })
 
   const url = `http://127.0.0.1:${port}`
   await waitForServer(url)
   return url
+}
+
+let restarting = false
+
+async function restartServer() {
+  if (restarting || isDev) return
+  restarting = true
+  try {
+    baseUrl = await startServer()
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(baseUrl)
+  } catch (err) {
+    dialog.showErrorBox('Server stopped', `The background server exited and could not be restarted: ${err.message}`)
+  } finally {
+    restarting = false
+  }
 }
 
 /**
@@ -241,6 +271,53 @@ function postJson(url, body) {
   })
 }
 
+/** true if `a` is a newer semver than `b` ("0.10.0" > "0.9.0", not string-order). */
+function isNewerVersion(a, b) {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0
+    const y = pb[i] || 0
+    if (x !== y) return x > y
+  }
+  return false
+}
+
+/** Ask GitHub for the latest release tag. Resolves to null on any failure - this must never block startup. */
+function fetchLatestRelease() {
+  return new Promise((resolve) => {
+    const req = https.get(
+      RELEASES_API_URL,
+      { headers: { 'User-Agent': 'SpeedyCadiro', Accept: 'application/vnd.github+json' } },
+      (res) => {
+        let data = ''
+        res.on('data', (c) => (data += c))
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data)
+            const tag = typeof json.tag_name === 'string' ? json.tag_name : null
+            if (!tag) return resolve(null)
+            resolve({ version: tag.replace(/^v/, ''), url: json.html_url || RELEASES_PAGE_URL })
+          } catch {
+            resolve(null)
+          }
+        })
+      },
+    )
+    req.on('error', () => resolve(null))
+    req.setTimeout(8000, () => req.destroy())
+  })
+}
+
+async function checkForUpdate() {
+  const current = app.getVersion()
+  const latest = await fetchLatestRelease()
+  if (!latest || !isNewerVersion(latest.version, current)) {
+    return { available: false, current }
+  }
+  return { available: true, current, latest: latest.version, url: latest.url }
+}
+
 /**
  * Launch the platform uninstaller and quit.
  *
@@ -359,6 +436,28 @@ function createWindow() {
     }
   })
 
+  // Chromium's built-in "page didn't load" screen is a dead end here: its
+  // Reload/Back buttons rely on native Chrome plumbing Electron doesn't ship,
+  // so once that screen shows up the user is stuck looking at it. Handle the
+  // failure ourselves instead - wait for the local server to answer again and
+  // reload the real page, so the user never sees that screen.
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, _desc, validatedURL, isMainFrame) => {
+    // -3 is ERR_ABORTED: a normal cancelled navigation (e.g. the reload we
+    // just issued superseding an in-flight one), not a real failure.
+    if (!isMainFrame || errorCode === -3) return
+    if (!validatedURL.startsWith(baseUrl)) return
+    console.error(`[electron] main frame failed to load (${errorCode}); retrying once the server answers`)
+    void waitForServer(baseUrl)
+      .then(() => {
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.loadURL(baseUrl)
+      })
+      .catch(() => {
+        // Server never came back on its own; the exit handler's restart path
+        // will load the window once it does.
+      })
+  })
+
   mainWindow.loadURL(baseUrl)
 }
 
@@ -376,6 +475,7 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.handle('poe:version', () => app.getVersion())
   ipcMain.handle('poe:uninstall', () => runUninstall())
+  ipcMain.handle('poe:check-update', () => checkForUpdate())
 
   ipcMain.handle('poe:login', async () => {
     try {

@@ -15,6 +15,9 @@ declare global {
       uninstall: () => Promise<{ ok: boolean }>
       onOpenOptions: (cb: () => void) => () => void
       login: () => Promise<{ ok: boolean; valid: boolean; reason?: string; found?: string[] }>
+      checkForUpdate: () => Promise<
+        { available: false; current: string } | { available: true; current: string; latest: string; url: string }
+      >
     }
   }
 }
@@ -89,45 +92,35 @@ export function SessionPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold">Session</h2>
-        <StatusPill info={info} />
-      </div>
+    <div className="relative flex items-center gap-2">
+      <StatusPill info={info} />
+
+      {isDesktop && (
+        <Button size="sm" onClick={signIn} disabled={busy}>
+          {busy ? "Working…" : "Sign in"}
+        </Button>
+      )}
+
+      {info?.configured && (
+        <Button size="sm" variant="ghost" onClick={clear} disabled={busy}>
+          Sign out
+        </Button>
+      )}
 
       {notice && (
         <p
-          className={`mb-3 rounded-md px-3 py-2 text-xs ${
+          className={`absolute right-0 top-full z-10 mt-1.5 w-64 rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md ${
             notice.kind === "ok"
-              ? "bg-emerald-500/10 text-emerald-400"
+              ? "text-emerald-400"
               : notice.kind === "warn"
-                ? "bg-amber-500/10 text-amber-400"
-                : "bg-destructive/10 text-destructive"
+                ? "text-amber-400"
+                : "text-destructive"
           }`}
         >
           {notice.text}
         </p>
       )}
-
-      {isDesktop && (
-        <div className="mb-3">
-          <Button size="sm" onClick={signIn} disabled={busy} className="w-full">
-            {busy ? "Working…" : "Sign in to pathofexile.com"}
-          </Button>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Opens a login window. Sign in as usual — the app takes it from there.
-          </p>
-        </div>
-      )}
-
-      {info?.configured && (
-        <div className="flex justify-end">
-          <Button size="sm" variant="ghost" onClick={clear} disabled={busy}>
-            Sign out
-          </Button>
-        </div>
-      )}
-    </section>
+    </div>
   )
 }
 
